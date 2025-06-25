@@ -1,0 +1,140 @@
+# Module 3: Veri Depolama Seçeneklerine Genel Bakış (Devam)
+
+Bu bölümde, BigQuery ve Memorystore servislerini ayrıntılı inceleyip, ardından tüm depolama seçeneklerini karşılaştıracağız. Ayrıca, bu modül için hands-on lab adımlarını göreceksiniz.
+
+---
+
+## 7. BigQuery
+
+**Use Case:** Büyük ölçekli veri analizi, OLAP iş yükleri, raporlama ve BI araç entegrasyonu.
+
+- **Özellikler:**  
+  - Serverless mimari, petabayt mertebesinde veri işleme.  
+  - Yerleşik ML (BigQuery ML), coğrafi analiz (GIS), BI desteği.  
+  - SQL tabanlı sorgulama, hızlı sütunlu tarama (columnar).
+
+- **Örnek: BigQuery Dataset ve Tablo Oluşturma**  
+  ```bash
+  # Dataset oluşturma
+  bq mk --dataset my-project:my_dataset
+
+  # Tablo oluşturma (JSON şema dosyası kullanarak)
+  bq mk --table my-project:my_dataset.my_table schema.json
+  ```
+
+- **Örnek: Sorgu Çalıştırma**  
+  ```bash
+  bq query --use_legacy_sql=false     'SELECT user_id, COUNT(*) AS session_count
+     FROM `my-project.my_dataset.user_sessions`
+     WHERE event_date = "2025-06-25"
+     GROUP BY user_id
+     ORDER BY session_count DESC
+     LIMIT 10;'
+  ```
+
+---
+
+## 8. Memorystore (Redis & Memcached)
+
+**Use Case:** Gerçek zamanlı önbellekleme, hızlı veri erişimi, web oturumları, oyun ve yayın iş yükleri.
+
+- **Özellikler:**  
+  - Fully managed Redis veya Memcached.  
+  - Otomatik provisioning, yedekleme, failover.  
+  - VPC üzerinden özel IP, IAM entegrasyonu.
+
+- **Örnek: Memorystore Redis Instance Oluşturma**  
+  ```bash
+  gcloud redis instances create my-redis     --size=1 --region=europe-west1 --zone=europe-west1-b     --redis-version=redis_6_x
+  ```
+
+- **Örnek: Bağlantı (Python)**  
+  ```python
+  import redis
+
+  client = redis.Redis(
+      host='10.0.0.5',  # Redis instance IP
+      port=6379,
+      db=0
+  )
+  client.set('key', 'value')
+  print(client.get('key'))
+  ```
+
+---
+
+## 9. Depolama Seçenekleri Karşılaştırması
+
+| Servis        | Tipi       | En Uygun | Uygun Değil    | Tipik Gecikme | Veri Boyutu       |
+|---------------|------------|----------|----------------|---------------|-------------------|
+| Cloud Storage | Object     | Medya, statik site | Küçük yapılandırılmış veri | ~10-100 ms    | 0 - 5 TB/obje     |
+| Firestore     | Document   | Mobil/Web, realtime | Büyük toplu analitik       | < 10 ms       | 1 KB - 1 MB/dok.  |
+| Bigtable      | Wide-column| Zaman serisi, analitik | Transactional OLTP          | < 10 ms       | TB - PB ölçeği    |
+| Cloud SQL     | RDBMS      | OLTP, web uygulamaları  | Petabayt analitik           | ~10-100 ms    | < 64 TB/instance  |
+| AlloyDB       | RDBMS      | OLTP + OLAP karışık     | NoSQL ihtiyaçları           | ~5-50 ms      | < 64 TB/cluster   |
+| Spanner       | RDBMS      | Global OLTP, kritik veri| Basit web uygulaması        | ~10-100 ms    | Sınırsız*         |
+| BigQuery      | OLAP       | Büyük veri analitiği    | Yüksek frekanslı küçük sorgular | ~seconds    | Sınırsız*         |
+| Memorystore   | Cache      | Düşük gecikme önbellek  | Kalıcı depolama             | < 1 ms        | < 5 GB (standart) |
+
+_*Sonsuz: Birden çok veritabanı/instance ile ölçeklenebilir._
+
+---
+
+## Hands-On Lab: Firestore ve Cloud Storage
+
+Aşağıdaki adımları izleyerek “Bookshelf” Python uygulamasını Qwiklabs ortamında çalıştırın.
+
+1. **Coursera/Qwiklabs Oturumu**  
+   - Tarayıcınızda gizli (incognito) modda Coursera’yı açın.  
+   - Lab sayfasına gidip “Start Lab” ve “Open Google Console” ile Qwiklabs kimlik bilgilerini alın.  
+   - Sağlanan kullanıcı adı ve parolayla giriş yapın.
+
+2. **Ortam Kurulumu**  
+   - Cloud Console’da proje ID’sini doğrulayın:  
+     ```bash
+     gcloud config get-value project
+     ```
+   - Python ortamı ve bağımlılıkları yükleyin:  
+     ```bash
+     sudo apt-get update
+     sudo apt-get install -y python3-pip
+     pip3 install google-cloud-firestore google-cloud-storage
+     ```
+
+3. **Firestore’a Kitap Verisi Yazma**  
+   - `main.py` dosyasında Firestore client oluşturun:  
+     ```python
+     from google.cloud import firestore
+
+     db = firestore.Client()
+     def add_book(book_id, title, author):
+         db.collection('books').document(book_id).set({
+             'title': title,
+             'author': author
+         })
+     ```
+
+4. **Cloud Storage’a Kapak Fotoğrafı Yükleme**  
+   - `main.py`’e Storage client ekleyin:  
+     ```python
+     from google.cloud import storage
+
+     storage_client = storage.Client()
+     bucket_name = 'my-bookshelf-bucket'
+
+     def upload_cover(book_id, file_path):
+         bucket = storage_client.bucket(bucket_name)
+         blob = bucket.blob(f'covers/{book_id}.jpg')
+         blob.upload_from_filename(file_path)
+     ```
+
+5. **Uygulamayı Çalıştırma ve Test Etme**  
+   - Firestore’da dokümanları ve Storage’da dosya listesini kontrol edin:  
+     ```bash
+     gcloud firestore documents list projects/$(gcloud config get-value project)/databases/(default)/documents/books
+     gsutil ls gs://my-bookshelf-bucket/covers/
+     ```
+
+---
+
+Bu adımları tamamladıktan sonra, uygulamanız Firestore’da kitap verilerini depolayacak ve kapak resimlerini Cloud Storage’a yükleyecektir. Hataları gidermek için logları ve Cloud Console’u kullanabilirsiniz.
